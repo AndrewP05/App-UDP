@@ -139,27 +139,38 @@ public class PrincipalSrv extends JFrame {
                         mensajesTxt.append("Archivo " + datagrama.getIdArchivo() + " recibido completamente.\n");
                         byte[] archivoCompleto = mf.reconstruir();
                         
-                        // Si deseas que se guarde siempre con extensión .mp3, puedes:
-                        // (OJO: si datagrama.getIdArchivo() ya tiene .mp3, no es necesario)
-                        String nombreArchivo = datagrama.getIdArchivo();
-                        // Fuerza extensión .mp3 (opcional):
-                        // nombreArchivo = nombreArchivo + ".mp3";
+                        // ====== CREAR CARPETA POR CLIENTE ======
+                        // Nombre de la carpeta = nombre del emisor
+                        // Ej: archivos_recibidos/Juan/
+                        String nombreCliente = datagrama.getEmisor();
                         
-                        // Guardar en un directorio relativo
-                        File directorio = new File(System.getProperty("user.dir"), "archivos_recibidos");
-                        if (!directorio.exists()) {
-                            if (directorio.mkdirs()) {
-                                mensajesTxt.append("Directorio creado: " + directorio.getAbsolutePath() + "\n");
+                        // Directorio base "archivos_recibidos"
+                        File directorioBase = new File(System.getProperty("user.dir"), "archivos_recibidos");
+                        // Directorio específico para el cliente
+                        File directorioCliente = new File(directorioBase, nombreCliente);
+                        
+                        if (!directorioCliente.exists()) {
+                            if (directorioCliente.mkdirs()) {
+                                mensajesTxt.append("Directorio creado: " + directorioCliente.getAbsolutePath() + "\n");
                             } else {
-                                mensajesTxt.append("No se pudo crear el directorio: " + directorio.getAbsolutePath() + "\n");
+                                mensajesTxt.append("No se pudo crear el directorio: " + directorioCliente.getAbsolutePath() + "\n");
                             }
                         }
                         
-                        // Crear el archivo
-                        File archivoGuardado = new File(directorio, nombreArchivo);
+                        // ====== FORZAR EXTENSIÓN .mp3 ======
+                        // Extrae el nombre que envía el cliente y añade .mp3 si no lo tiene
+                        String nombreArchivo = datagrama.getIdArchivo();
+                        if (!nombreArchivo.toLowerCase().endsWith(".mp3")) {
+                            nombreArchivo += ".mp3";
+                        }
+                        
+                        // Crear el archivo en la carpeta del cliente
+                        File archivoGuardado = new File(directorioCliente, nombreArchivo);
+                        
+                        // Guardar el archivo
                         try (FileOutputStream fos = new FileOutputStream(archivoGuardado)) {
                             fos.write(archivoCompleto);
-                            fos.flush(); // Asegurar escritura
+                            fos.flush();
                         }
                         mensajesTxt.append("Archivo guardado en: " + archivoGuardado.getAbsolutePath() + "\n");
                         
