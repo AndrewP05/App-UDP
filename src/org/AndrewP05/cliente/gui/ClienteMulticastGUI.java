@@ -103,28 +103,56 @@ public class ClienteMulticastGUI extends JFrame {
         }
         
         try {
-            // Leer archivo .mp3
+            // Leer archivo .mp3 completo
             byte[] archivoBytes = new byte[(int) archivoMp3.length()];
             try (FileInputStream fis = new FileInputStream(archivoMp3)) {
                 fis.read(archivoBytes);
             }
             
-            // Crear el objeto datagrama
-            MiDatagrama datagrama = new MiDatagrama(nombre, mensaje, archivoBytes);
+            // Configurar parámetros de fragmentación
+            int fragmentSize = 1024; // 1 KB por fragmento (puedes ajustar este valor)
+            int totalFragments = (int) Math.ceil((double) archivoBytes.length / fragmentSize);
             
-            // Serializar el objeto
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ObjectOutputStream oos = new ObjectOutputStream(baos);
-            oos.writeObject(datagrama);
-            oos.flush();
-            byte[] buffer = baos.toByteArray();
+            // Generar un identificador único para el archivo (por ejemplo, nombre + timestamp)
+            // Si deseas que siempre termine en .mp3, asegúrate de concatenar la extensión
+            String idArchivo = archivoMp3.getName() + "_" + System.currentTimeMillis();
             
-            // Crear y enviar el paquete multicast
-            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, PORT);
-            multicastSocket.send(packet);
+            // Enviar cada fragmento
+            for (int i = 0; i < totalFragments; i++) {
+                int start = i * fragmentSize;
+                int end = Math.min(start + fragmentSize, archivoBytes.length);
+                byte[] fragment = new byte[end - start];
+                System.arraycopy(archivoBytes, start, fragment, 0, fragment.length);
+                
+                // Crear el datagrama con la información del fragmento
+                MiDatagrama datagrama = new MiDatagrama(
+                        nombre, 
+                        mensaje, 
+                        idArchivo, 
+                        i + 1, 
+                        totalFragments, 
+                        fragment
+                );
+                
+                // Serializar el objeto
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                oos.writeObject(datagrama);
+                oos.flush();
+                byte[] buffer = baos.toByteArray();
+                
+                // Crear y enviar el paquete multicast
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, PORT);
+                multicastSocket.send(packet);
+                
+                mensajesArea.append("Enviado fragmento " + (i + 1) + " de " + totalFragments + "\n");
+                
+                // Pausa breve para evitar saturar la red (opcional)
+                Thread.sleep(10);
+            }
             
-            mensajesArea.append("Mensaje enviado al grupo multicast.\n");
-        } catch (IOException ex) {
+            mensajesArea.append("Archivo completo enviado.\n");
+        } catch (IOException | InterruptedException ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this, "Error al enviar mensaje: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
@@ -141,7 +169,7 @@ public class ClienteMulticastGUI extends JFrame {
             return;
         }
         
-        // Hilo para recibir mensajes multicast
+        // Hilo para recibir mensajes multicast (opcional, si el servidor responde o hay otros clientes)
         Thread receptorThread = new Thread(() -> {
             while (true) {
                 try {
@@ -154,8 +182,7 @@ public class ClienteMulticastGUI extends JFrame {
                     ObjectInputStream ois = new ObjectInputStream(bais);
                     MiDatagrama datagrama = (MiDatagrama) ois.readObject();
                     
-                    // Filtrar mensajes que sean enviados por el mismo usuario
-                    // Se compara el nombre enviado en el datagrama con el ingresado en la interfaz
+                    // Filtrar mensajes enviados por el mismo usuario
                     if(datagrama.getEmisor().equals(nombreField.getText().trim())) {
                         continue;
                     }
@@ -165,8 +192,8 @@ public class ClienteMulticastGUI extends JFrame {
                         mensajesArea.append("Mensaje recibido:\n");
                         mensajesArea.append("Emisor: " + datagrama.getEmisor() + "\n");
                         mensajesArea.append("Mensaje: " + datagrama.getMensaje() + "\n");
-                        // Se puede guardar el archivo o reproducirlo según la lógica de la aplicación
-                        mensajesArea.append("Archivo .mp3 recibido (tamaño: " + datagrama.getArchivoMp3().length + " bytes)\n\n");
+                        mensajesArea.append("Fragmento " + datagrama.getFragmentoActual() + " de " + datagrama.getTotalFragmentos() +
+                                " del archivo " + datagrama.getIdArchivo() + "\n\n");
                     });
                     
                 } catch (IOException | ClassNotFoundException ex) {
